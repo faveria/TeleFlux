@@ -309,40 +309,33 @@
               // Wait for MediaViewer
               await this.waitForElement("#MediaViewer, .media-viewer-whole");
 
-              // Wait a bit for load
-              await this.sleep(1500);
+              // Wait for the actual media source to populate
+              // Sometimes the viewer opens but the video/image src takes time to load
+              const mediaSourceValues = await this.waitForMediaSource();
 
-              // Find the download button we injected
-              const dlBtn = document.querySelector("button.tel-download");
-              if (dlBtn) {
-                logger.info("Download button found, clicking...");
+              if (mediaSourceValues) {
+                const { url, type } = mediaSourceValues;
+                logger.info(`Media loaded: ${type} from ${url}`);
 
-                // We need to wait for download to finish
-                const viewerVideo = document.querySelector("#MediaViewer video, .media-viewer-whole video");
-                const viewerImage = document.querySelector("#MediaViewer img.MediaViewerImage, .media-viewer-whole img");
+                // Find the download button we injected (just in case)
+                const dlBtn = document.querySelector("button.tel-download");
 
                 let processingPromise = null;
 
-                if (viewerVideo) {
-                  const url = viewerVideo.src || viewerVideo.currentSrc;
+                if (type === 'video') {
                   processingPromise = new Promise((resolve, reject) => {
                     tel_download_video(url, resolve, reject);
                   });
-                } else if (viewerImage) {
-                  const url = viewerImage.src;
+                } else if (type === 'image') {
                   tel_download_image(url); // Sync
                   processingPromise = Promise.resolve();
-                } else {
-                  // Fallback
-                  dlBtn.click();
-                  processingPromise = this.sleep(3000);
                 }
 
                 this.statsEl.querySelector("span:nth-child(3)").innerText = "D: " + this.stats.downloaded + "...";
                 await processingPromise;
                 this.stats.downloaded++;
               } else {
-                logger.error("Download button not found in viewer.");
+                logger.error("Media source never loaded or empty.");
                 this.stats.failed++;
               }
 
@@ -378,6 +371,44 @@
           await this.sleep(2000);
         }
       }
+    }
+
+    waitForMediaSource(timeout = 10000) {
+      return new Promise((resolve) => {
+        const interval = 200;
+        let elapsed = 0;
+        const check = setInterval(() => {
+          const viewerVideo = document.querySelector("#MediaViewer video, .media-viewer-whole video");
+          const viewerImage = document.querySelector("#MediaViewer img.MediaViewerImage, .media-viewer-whole img");
+
+          if (viewerVideo) {
+            const src = viewerVideo.getAttribute("src") || viewerVideo.currentSrc;
+            // Check if src is valid (not empty)
+            if (src && src.length > 5) {
+              clearInterval(check);
+              resolve({ type: 'video', url: src });
+              return;
+            }
+          }
+
+          if (viewerImage) {
+            const src = viewerImage.getAttribute("src");
+            // Check if src is valid (not empty and not base64 placeholder if possible, though base64 is rare for full view)
+            if (src && src.length > 5) {
+              clearInterval(check);
+              resolve({ type: 'image', url: src });
+              return;
+            }
+          }
+
+          elapsed += interval;
+          if (elapsed >= timeout) {
+            clearInterval(check);
+            logger.error("Timeout waiting for media source to populate");
+            resolve(null);
+          }
+        }, interval);
+      });
     }
 
     sleep(ms) {

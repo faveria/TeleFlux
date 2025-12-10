@@ -258,10 +258,24 @@
         const candidateVideos = Array.from(document.querySelectorAll("video"));
 
         const candidates = [...candidateImages, ...candidateVideos].filter(el => {
-          // Filter out avatars, stickers, etc.
+          // 1. Filter out avatars
           if (el.classList.contains("avatar-photo")) return false;
-          // If mostly square small image, probably sticker or avatar
+
+          // 2. Filter out stickers (by class name)
+          const classStr = el.className.toString().toLowerCase();
+          if (classStr.includes("sticker") ||
+            classStr.includes("emoji") ||
+            classStr.includes("tgs")) return false;
+
+          // 3. Filter out stickers (by parent)
+          if (el.closest(".Sticker") || el.closest(".sticker") || el.closest(".AnimatedSticker")) return false;
+
+          // 4. Size check (Stickers are usually small, but let's be safe)
+          // Standard photos in chat are usually large.
+          // Minimum size 100x100 is good, but some stickers are 256x256.
+          // Let's rely on aspect ratio or specific classes if possible.
           if (el.clientWidth < 100 || el.clientHeight < 100) return false;
+
           return true;
         });
 
